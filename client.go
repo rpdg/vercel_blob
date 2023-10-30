@@ -17,9 +17,12 @@ const (
 )
 
 type VercelBlobClient struct {
+	// A token provider to use to obtain a token to authenticate with the API
 	tokenProvider TokenProvider
-	baseURL       string
-	apiVersion    string
+	// The server URL to use.  This is not normally needed but can be used for testing purposes.
+	baseURL string
+	// The API version of the client
+	apiVersion string
 }
 
 type BlobApiErrorDetail struct {
@@ -31,6 +34,7 @@ type BlobApiError struct {
 	Error BlobApiErrorDetail `json:"error"`
 }
 
+// NewVercelBlobClient creates a new client for use inside a Vercel function
 func NewVercelBlobClient() *VercelBlobClient {
 	return &VercelBlobClient{
 		baseURL:    DEFAULT_BASE_URL,
@@ -38,6 +42,7 @@ func NewVercelBlobClient() *VercelBlobClient {
 	}
 }
 
+// NewVercelBlobClientExternal creates a new client for use outside of Vercel
 func NewVercelBlobClientExternal(tokenProvider TokenProvider) *VercelBlobClient {
 	return &VercelBlobClient{
 		tokenProvider: tokenProvider,
@@ -118,25 +123,51 @@ func (c *VercelBlobClient) handleError(resp *http.Response) error {
 	}
 }
 
+// ListBlobResultBlob is details about a blob that are returned by the list operation
 type ListBlobResultBlob struct {
-	URL        string    `json:"url"`
-	PathName   string    `json:"pathname"`
-	Size       uint64    `json:"size"`
+	// The URL to download the blob
+	URL string `json:"url"`
+	// The pathname of the blob
+	PathName string `json:"pathname"`
+	// The size of the blob in bytes
+	Size uint64 `json:"size"`
+	// The time the blob was uploaded
 	UploadedAt time.Time `json:"uploadedAt"`
 }
 
+// ListBlobResult is the response from the list operation
 type ListBlobResult struct {
-	Blobs   []ListBlobResultBlob `json:"blobs"`
-	Cursor  string               `json:"cursor"`
-	HasMore bool                 `json:"hasMore"`
+	// A list of blobs found by the operation
+	Blobs []ListBlobResultBlob `json:"blobs"`
+	// A cursor that can be used to page results
+	Cursor string `json:"cursor"`
+	// True if there are more results available
+	HasMore bool `json:"hasMore"`
 }
 
+// ListCommandOptions is options for the list operation
+//
+// The limit option can be used to limit the number of results returned.
+// If the limit is reached then response will have has_more set to true
+// and the cursor can be used to get the next page of results.
 type ListCommandOptions struct {
-	Limit  uint64
+	// The maximum number of results to return
+	Limit uint64
+	// A prefix to filter results
 	Prefix string
+	// A cursor (returned from a previous list call) used to page results
 	Cursor string
 }
 
+// PutCommandOptions is options for the put operation
+//
+// By default uploaded files are assigned a URL with a random suffix.  This
+// ensures that no put operation will overwrite an existing file.  The url
+// returned in the response can be used to later download the file.
+//
+// If predictable URLs are needed then add_random_suffix can be set to false
+// to disable this behavior.  If dsiabled then sequential writes to the same
+// pathname will overwrite each other.
 type PutCommandOptions struct {
 	AddRandomSuffix    bool
 	CacheControlMaxAge uint64
@@ -148,25 +179,54 @@ type Range struct {
 	End   uint
 }
 
+// DownloadCommandOptions is options for the download operation
 type DownloadCommandOptions struct {
+	// The range of bytes to download.  If not specified then the entire blob
+	// is downloaded.  The start of the range must be less than the # of bytes
+	// in the blob or an error will be returned.  The end of the range may be
+	// greater than the number of bytes in the blob.
 	ByteRange *Range
 }
 
-type PutResult struct {
-	URL         string `json:"url"`
-	Path        string `json:"pathname"`
+// PutBlobPutResult is the response from the put operation
+type PutBlobPutResult struct {
+	// The URL to download the blob
+	URL string `json:"url"`
+	// The pathname of the blob
+	Pathname string `json:"pathname"`
+	// The content type of the blob
 	ContentType string `json:"contentType"`
+	// The content disposition of the blob
+	ContentDisposition string `json:"contentDisposition"`
 }
 
+// HeadBlobResult is response from the head operation
 type HeadBlobResult struct {
-	URL          string    `json:"url"`
-	Size         uint64    `json:"size"`
-	UploadedAt   time.Time `json:"uploadedAt"`
-	Path         string    `json:"pathname"`
-	ContentType  string    `json:"contentType"`
-	CacheControl string    `json:"cacheControl"`
+	// The URL to download the blob
+	URL string `json:"url"`
+	// The size of the blob in bytes
+	Size uint64 `json:"size"`
+	// The time the blob was uploaded
+	UploadedAt time.Time `json:"uploadedAt"`
+	// The pathname of the blob
+	Pathname string `json:"pathname"`
+	// The content type of the blob
+	ContentType string `json:"contentType"`
+	// The content disposition of the blob
+	ContentDisposition string `json:"contentDisposition"`
+	// The cache settings for the blob
+	CacheControl string `json:"cacheControl"`
 }
 
+// List files in the blob store
+//
+// # Arguments
+//
+// * `options` - Options for the list operation
+//
+// # Returns
+//
+// The response from the list operation
 func (c *VercelBlobClient) List(options ListCommandOptions) (*ListBlobResult, error) {
 
 	req, err := http.NewRequest(http.MethodGet, c.baseURL, nil)
@@ -211,7 +271,19 @@ func (c *VercelBlobClient) List(options ListCommandOptions) (*ListBlobResult, er
 	return &result, nil
 }
 
-func (c *VercelBlobClient) Put(pathname string, body io.Reader, options PutCommandOptions) (*PutResult, error) {
+// Put uploads a file to the blob store
+//
+// # Arguments
+//
+// * `pathname` - The destination pathname for the uploaded file
+// * `body` - The contents of the file
+// * `options` - Options for the put operation
+//
+// # Returns
+//
+// The response from the put operation.  This includes a URL that can
+// be used to later download the blob.
+func (c *VercelBlobClient) Put(pathname string, body io.Reader, options PutCommandOptions) (*PutBlobPutResult, error) {
 
 	if pathname == "" {
 		return nil, NewInvalidInputError("pathname")
@@ -251,7 +323,7 @@ func (c *VercelBlobClient) Put(pathname string, body io.Reader, options PutComma
 		return nil, c.handleError(resp)
 	}
 
-	var result PutResult
+	var result PutBlobPutResult
 	if err = json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
 	}
@@ -259,6 +331,18 @@ func (c *VercelBlobClient) Put(pathname string, body io.Reader, options PutComma
 	return &result, nil
 }
 
+// Head gets the metadata for a file in the blob store
+//
+// # Arguments
+//
+//   - `pathname` - The URL of the file to get metadata for.  This should be the same URL that is used
+//     to download the file.
+//   - `options` - Options for the head operation
+//
+// # Returns
+//
+// If the file exists then the metadata for the file is returned.  If the file does not exist
+// then None is returned.
 func (c *VercelBlobClient) Head(pathname string) (*HeadBlobResult, error) {
 
 	apiUrl := c.getAPIURL(pathname)
@@ -294,6 +378,17 @@ func (c *VercelBlobClient) Head(pathname string) (*HeadBlobResult, error) {
 	return &result, nil
 }
 
+// Delete a blob from the blob store
+//
+// # Arguments
+//
+//   - `urlPath` - The URL of the file to delete.  This should be the same URL that is used
+//     to download the file.
+//   - `options` - Options for the del operation
+//
+// # Returns
+//
+// None
 func (c *VercelBlobClient) Delete(urlPath string) error {
 
 	apiUrl := c.getAPIURL("/delete")
@@ -323,6 +418,16 @@ func (c *VercelBlobClient) Delete(urlPath string) error {
 	return nil
 }
 
+// Download a blob from the blob store
+//
+// # Arguments
+//
+// * `urlPath` - The URL of the file to download.
+// * `options` - Options for the download operation
+//
+// # Returns
+//
+// The contents of the file
 func (c *VercelBlobClient) Download(urlPath string, options DownloadCommandOptions) ([]byte, error) {
 
 	req, err := http.NewRequest(http.MethodGet, urlPath, nil)
