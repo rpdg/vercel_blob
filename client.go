@@ -222,7 +222,7 @@ type HeadBlobResult struct {
 //
 // # Arguments
 //
-// * `options` - Options for the list operation
+//   - `options` - Options for the list operation
 //
 // # Returns
 //
@@ -275,9 +275,9 @@ func (c *VercelBlobClient) List(options ListCommandOptions) (*ListBlobResult, er
 //
 // # Arguments
 //
-// * `pathname` - The destination pathname for the uploaded file
-// * `body` - The contents of the file
-// * `options` - Options for the put operation
+//   - `pathname` - The destination pathname for the uploaded file
+//   - `body` - The contents of the file
+//   - `options` - Options for the put operation
 //
 // # Returns
 //
@@ -418,6 +418,18 @@ func (c *VercelBlobClient) Delete(urlPath string) error {
 	return nil
 }
 
+// Copy copies the file at the given `fromUrl` to the path `toPath`.
+//
+// # Arguments
+//
+//   - `fromUrl` - Must be a valid URL of the existed file
+//   - `toPath` - The destination pathname
+//   - `options` - Options for the put operation
+//
+// # Returns
+//
+// The response from the put operation.  This includes a URL that can
+// be used to later download the blob.
 func (c *VercelBlobClient) Copy(fromUrl, toPath string, options PutCommandOptions) (*PutBlobPutResult, error) {
 	if len(fromUrl) == 0 {
 		return nil, NewInvalidInputError("fromUrl")
@@ -475,8 +487,8 @@ func (c *VercelBlobClient) Copy(fromUrl, toPath string, options PutCommandOption
 //
 // # Arguments
 //
-// * `urlPath` - The URL of the file to download.
-// * `options` - Options for the download operation
+//   - `urlPath` - The URL of the file to download.
+//   - `options` - Options for the download operation
 //
 // # Returns
 //
