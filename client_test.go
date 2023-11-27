@@ -2,7 +2,8 @@ package vercel_blob
 
 import (
 	"fmt"
-	"strings"
+	"io"
+	"os"
 	"testing"
 )
 
@@ -19,18 +20,34 @@ func Test_CountFiles(t *testing.T) {
 
 func Test_PutWithRandomSuffix(t *testing.T) {
 	client := NewVercelBlobClient()
+	f, _ := os.Open("a.png")
+	defer f.Close()
 	file1, err := client.Put(
-		"vercel_blob_unittest/a.txt",
-		strings.NewReader("test body"),
+		"vercel_blob_unittest/a.png",
+		io.Reader(f),
 		PutCommandOptions{
 			AddRandomSuffix: true,
-			ContentType:     "text/plain",
+			//ContentType:     "multipart/form-data",
 		})
 	if err != nil {
 		t.Error(err)
 		return
 	} else {
 		fmt.Println(file1.URL)
+	}
+}
+
+func Test_Copy(t *testing.T) {
+	//https://fetegzn4vw3t5yqf.public.blob.vercel-storage.com/vercel_blob_unittest/a.txt
+	client := NewVercelBlobClient()
+	res, err := client.Copy("https://fetegzn4vw3t5yqf.public.blob.vercel-storage.com/vercel_blob_unittest/a.txt",
+		"vercel_blob_unittest/B.txt",
+		PutCommandOptions{})
+	if err != nil {
+		t.Error(err)
+		return
+	} else {
+		fmt.Println(res.URL)
 	}
 }
 

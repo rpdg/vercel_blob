@@ -285,7 +285,7 @@ func (c *VercelBlobClient) List(options ListCommandOptions) (*ListBlobResult, er
 // be used to later download the blob.
 func (c *VercelBlobClient) Put(pathname string, body io.Reader, options PutCommandOptions) (*PutBlobPutResult, error) {
 
-	if pathname == "" {
+	if len(pathname) == 0 {
 		return nil, NewInvalidInputError("pathname")
 	}
 
@@ -416,6 +416,59 @@ func (c *VercelBlobClient) Delete(urlPath string) error {
 	}
 
 	return nil
+}
+
+func (c *VercelBlobClient) Copy(fromUrl, toPath string, options PutCommandOptions) (*PutBlobPutResult, error) {
+	if len(fromUrl) == 0 {
+		return nil, NewInvalidInputError("fromUrl")
+	}
+
+	if len(toPath) == 0 {
+		return nil, NewInvalidInputError("toPath")
+	}
+
+	apiUrl := c.getAPIURL(toPath)
+
+	req, err := http.NewRequest(http.MethodPut, apiUrl, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.URL.Query().Add("fromUrl", fromUrl)
+
+	c.addAPIVersionHeader(req)
+	err = c.addAuthorizationHeader(req, "put", toPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if !options.AddRandomSuffix {
+		req.Header.Set("X-Add-Random-Suffix", "0")
+	}
+	if options.ContentType != "" {
+		req.Header.Set("X-Content-Type", options.ContentType)
+	}
+	if options.CacheControlMaxAge > 0 {
+		req.Header.Set("X-Cache-Control-Max-Age", strconv.FormatUint(options.CacheControlMaxAge, 10))
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.handleError(resp)
+	}
+
+	var result PutBlobPutResult
+	if err = json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
 }
 
 // Download a blob from the blob store
